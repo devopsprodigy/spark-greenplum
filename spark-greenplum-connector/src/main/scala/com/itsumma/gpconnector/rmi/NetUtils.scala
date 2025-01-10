@@ -3,6 +3,7 @@ package com.itsumma.gpconnector.rmi
 import org.apache.spark.internal.Logging
 
 import java.net.{DatagramSocket, InetAddress, InterfaceAddress, NetworkInterface, SocketException}
+import scala.util.control.NonFatal
 
 case class NetUtils() extends Logging {
 
@@ -28,7 +29,7 @@ case class NetUtils() extends Logging {
 
   /**
    * Get tuple of hostName, ipAddress associated with the local host,
-   * choosing the default route network interface if possible.
+   * choosing the default route network interface if possible. 
    *
    * @return (hostName, ipAddress)
    */
@@ -85,21 +86,27 @@ case class NetUtils() extends Logging {
    */
   def resolveHost2Ip(hostName: String): String = {
     var isLocal: Boolean = false
-    for (address <- InetAddress.getAllByName(hostName)) {
-      if (!address.isLoopbackAddress) {
-        val ip = address.getHostAddress
-        logInfo(s"Resolved ${hostName} to ${ip}")
-        return ip
-      }
-      if (address.isLoopbackAddress || address.isSiteLocalAddress) {
-        isLocal = true
-      }
+    try {
+        for (address <- InetAddress.getAllByName(hostName)) {
+            if (!address.isLoopbackAddress) {
+                val ip = address.getHostAddress
+                logInfo(s"Resolved ${hostName} to ${ip}")
+                return ip
+            }
+            if (address.isLoopbackAddress || address.isSiteLocalAddress) {
+                isLocal = true
+            }
+        }
+    } catch {
+      case NonFatal(e) =>
     }
+
     if (isLocal) {
       val (name, ip) = getLocalHostNameAndIp
       logInfo(s"Resolved ${hostName} to local ${ip}/${name}")
       return ip
     }
+
     logInfo(s"Unable to resolve ${hostName}")
     null
   }
