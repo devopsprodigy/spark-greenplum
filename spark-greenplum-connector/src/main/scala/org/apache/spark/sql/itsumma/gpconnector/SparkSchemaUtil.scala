@@ -471,11 +471,16 @@ object SparkSchemaUtil {
 
   def guessMaxParallelTasks(): Int = {
     val sparkContext = SparkContext.getOrCreate
+    if (sparkContext.master.contains("local")) {
+      return sparkContext.defaultParallelism
+    }
+
     var guess: Int = -1
     while ((guess <= 0) && !Thread.currentThread().isInterrupted) {
       guess = sparkContext.getExecutorMemoryStatus.keys.size - 1
-      if (sparkContext.deployMode == "cluster")
+      if (sparkContext.deployMode == "cluster") {
         guess -= 1
+      }
     }
     guess
   }
