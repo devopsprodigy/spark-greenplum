@@ -1,8 +1,10 @@
 package com.itsumma.gpconnector.rmi
 
 import org.apache.spark.internal.Logging
+import org.apache.commons.lang3.{SystemUtils}
 
-import java.net.{DatagramSocket, InetAddress, InterfaceAddress, NetworkInterface, SocketException}
+import java.net.{DatagramSocket, Inet4Address, InetAddress, InterfaceAddress, NetworkInterface, SocketException}
+import scala.collection.JavaConverters._
 
 case class NetUtils() extends Logging {
 
@@ -30,49 +32,42 @@ case class NetUtils() extends Logging {
    * Get tuple of hostName, ipAddress associated with the local host,
    * choosing the default route network interface if possible.
    *
+   * Slightly modified version of <a href="https://github.com/apache/spark/blob/v3.5.4/core/src/main/scala/org/apache/spark/util/Utils.scala#L952">org.apache.spark.util.Utils.findLocalInetAddress</a>
+   *
    * @return (hostName, ipAddress)
    */
   def getLocalHostNameAndIp: (String, String) = {
-    var retName: String = null
-    var retIp: String = null
-    try {
-      val networkInterfaceEnumeration = NetworkInterface.getNetworkInterfaces
-      while (networkInterfaceEnumeration.hasMoreElements) {
-        import scala.collection.JavaConverters._
-        val netInterface: NetworkInterface = networkInterfaceEnumeration.nextElement
-        if (netInterface.isUp && !netInterface.isLoopback) {
-          for (interfaceAddress: InterfaceAddress <- netInterface.getInterfaceAddresses.asScala) {
-            val inetAddress: InetAddress = interfaceAddress.getAddress
-            if (inetAddress.isSiteLocalAddress && !inetAddress.isLoopbackAddress) {
-              val hostName = inetAddress.getHostName
-              val ipAddress = inetAddress.getHostAddress
-              if (hostName != ipAddress) {
-                if (retName == null) {
-                  retName = hostName
-                  retIp = ipAddress
-                }
-                try {
-                  val s: DatagramSocket = new DatagramSocket()
-                  s.connect(InetAddress.getByAddress(Array[Byte](1, 1, 1, 1)), 0)
-                  if (s.getLocalAddress.getHostAddress == ipAddress)
-                    return (hostName, ipAddress)
-                } catch {
-                  case e: Exception => logDebug(s"${e.getMessage}")
-                }
-              }
+    var address = InetAddress.getLocalHost
+    if (address.isLoopbackAddress) {
+        // Address resolves to something like 127.0.1.1, which happens on Debian; try to find
+        // a better address using the local network interfaces
+        // getNetworkInterfaces returns ifs in reverse order compared to ifconfig output order
+        // on unix-like system. On windows, it returns in index order.
+        // It's more proper to pick ip address following system output order.
+        val activeNetworkIFs = NetworkInterface.getNetworkInterfaces.asScala.toSeq
+        val reOrderedNetworkIFs = if (SystemUtils.IS_OS_WINDOWS) activeNetworkIFs else activeNetworkIFs.reverse
+
+        for (ni <- reOrderedNetworkIFs) {
+            val addresses = ni.getInetAddresses.asScala
+              .filterNot(addr => addr.isLinkLocalAddress || addr.isLoopbackAddress).toSeq
+            if (addresses.nonEmpty) {
+                val addr = addresses.find(_.isInstanceOf[Inet4Address]).getOrElse(addresses.head)
+                // because of Inet6Address.toHostName may add interface at the end if it knows about it
+                val strippedAddress = InetAddress.getByAddress(addr.getAddress)
+                // We've found an address that looks reasonable!
+                logWarning(s"Your hostname, ${address.getHostName}, " +
+                    s"resolves to a loopback address: ${address.getHostAddress}; " +
+                    s"using ${strippedAddress.getHostAddress} instead (on interface " +
+                    s"${ni.getName})")
+                return (address.getCanonicalHostName, strippedAddress.getHostAddress)
             }
-          }
         }
-      }
-    } catch {
-      case e: SocketException =>
-        logDebug(s"${e.getMessage}")
+        logWarning(s"Your hostname, ${address.getHostName}, " +
+            s"resolves to a loopback address: ${address.getHostAddress}, " +
+            s"but we couldn't find any external IP address!")
     }
-    if (retIp == null || retName == null) {
-      retIp = InetAddress.getLocalHost.getHostAddress
-      retName = InetAddress.getLocalHost.getHostName
-    }
-    (retName, retIp)
+
+    (address.getCanonicalHostName, address.getHostAddress)
   }
 
   /**
