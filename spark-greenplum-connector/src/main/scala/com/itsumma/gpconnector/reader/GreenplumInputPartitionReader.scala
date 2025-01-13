@@ -34,6 +34,7 @@ class GreenplumInputPartitionReader(optionsFactory: GPOptionsFactory,
   private val stageId: Int = TaskContext.get.stageId()
   private val exId: String = SparkEnv.get.executorId
   private val progressTracker: ProgressTracker = new ProgressTracker()
+  private val sparkSchemaUtil: SparkSchemaUtil = SparkSchemaUtil(optionsFactory.dbTimezone)
 
   private var schemaOrPlaceholder = schema
   if (schemaOrPlaceholder.isEmpty) {
@@ -95,7 +96,7 @@ class GreenplumInputPartitionReader(optionsFactory: GPOptionsFactory,
               if (schema.nonEmpty) rowString.split(fieldDelimiter) else "".split(fieldDelimiter)
             }
             val row = progressTracker.trackProgress("parseFields") {
-              SparkSchemaUtil(optionsFactory.dbTimezone).textToInternalRow(schemaOrPlaceholder, fields)
+              sparkSchemaUtil.textToInternalRow(schemaOrPlaceholder, fields)
             }
             val startEnq = System.nanoTime()
             convNs += System.nanoTime() - startConv

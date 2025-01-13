@@ -17,6 +17,7 @@ class GreenplumScanBuilder(optionsFactory: GPOptionsFactory, rowSet: GreenplumRo
   private var pushedDownFilters: Array[Filter] = new Array[Filter](0)
   logDebug(s"""options=\n${optionsFactory.dumpParams()}""")
   private var greenplumScan: GreenplumScan = null
+  private val sparkSchemaUtil: SparkSchemaUtil = SparkSchemaUtil(optionsFactory.dbTimezone)
 
   override def build(): Scan = this.synchronized {
     if (greenplumScan == null)
@@ -25,7 +26,7 @@ class GreenplumScanBuilder(optionsFactory: GPOptionsFactory, rowSet: GreenplumRo
   }
 
   override def pushFilters(filters: Array[Filter]): Array[Filter] = {
-    val tuple3 = SparkSchemaUtil(optionsFactory.dbTimezone).pushFilters(filters)
+    val tuple3 = sparkSchemaUtil.pushFilters(filters)
     whereClause = tuple3._1
     pushedDownFilters = tuple3._3
     tuple3._2

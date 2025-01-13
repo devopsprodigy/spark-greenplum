@@ -43,6 +43,7 @@ class GreenplumDataWriter(writeUUID: String, schema: StructType, optionsFactory:
   private val instanceId: String = s"$partitionId:$taskId:$epochId"
   private var rmiSlave: RMISlave = null
   private val progressTracker: ProgressTracker = new ProgressTracker()
+  private val sparkSchemaUtil: SparkSchemaUtil = SparkSchemaUtil(optionsFactory.dbTimezone)
 
   //init()
 
@@ -74,7 +75,7 @@ class GreenplumDataWriter(writeUUID: String, schema: StructType, optionsFactory:
         init()
     }
     val txt = progressTracker.trackProgress("row2text") {
-      SparkSchemaUtil(optionsFactory.dbTimezone).internalRowToText(schema, t, fieldDelimiter)
+      sparkSchemaUtil.internalRowToText(schema, t, fieldDelimiter)
     }
     //logDebug(s"write numFields=${t.numFields}, row(${rowCount.get()})='${txt}'")
     val writeStart: Long = System.currentTimeMillis()
